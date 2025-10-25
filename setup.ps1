@@ -113,7 +113,7 @@ else {
 function Install-OhMyPoshTheme {
     param (
         [string]$ThemeName = "lambdageneration",
-        [string]$ThemeUrl = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/lambdageneration.omp.json"
+        [string]$ThemeUrl = "https://raw.githubusercontent.com/akrista/pwsh-pf/main/lambdageneration.omp.json"
     )
     $profilePath = Get-ProfileDir
     if (!(Test-Path -Path $profilePath)) {

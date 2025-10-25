@@ -700,7 +700,7 @@ else {
     $localThemePath = Join-Path (Get-ProfileDir) "lambdageneration.omp.json"
     if (-not (Test-Path $localThemePath)) {
         # Try to download the theme file to the detected local path
-        $themeUrl = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/lambdageneration.omp.json"
+        $themeUrl = "https://raw.githubusercontent.com/akrista/pwsh-pf/main/lambdageneration.omp.json"
         try {
             Invoke-RestMethod -Uri $themeUrl -OutFile $localThemePath
             Write-Host "Downloaded missing Oh My Posh theme to $localThemePath"
@@ -714,7 +714,7 @@ else {
     }
     else {
         # Fallback to remote theme if local file doesn't exist
-        oh-my-posh init pwsh --config https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/lambdageneration.omp.json | Invoke-Expression
+        oh-my-posh init pwsh --config https://raw.githubusercontent.com/akrista/pwsh-pf/main/lambdageneration.omp.json | Invoke-Expression
     }
 }
 
