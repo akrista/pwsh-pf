@@ -112,8 +112,8 @@ else {
 # Function to download Oh My Posh theme locally
 function Install-OhMyPoshTheme {
     param (
-        [string]$ThemeName = "cobalt2",
-        [string]$ThemeUrl = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json"
+        [string]$ThemeName = "lambdageneration",
+        [string]$ThemeUrl = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/lambdageneration.omp.json"
     )
     $profilePath = Get-ProfileDir
     if (!(Test-Path -Path $profilePath)) {
