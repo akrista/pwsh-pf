@@ -74,7 +74,7 @@ if ($repo_root_Override) {
     $repo_root = $repo_root_Override
 }
 else {
-    $repo_root = "https://raw.githubusercontent.com/ChrisTitusTech"
+    $repo_root = "https://raw.githubusercontent.com/akrista"
 }
 
 # Define the path to the file that stores the last execution time
@@ -165,7 +165,7 @@ function Update-Profile {
     }
     else {
         try {
-            $url = "$repo_root/powershell-profile/main/Microsoft.PowerShell_profile.ps1"
+            $url = "$repo_root/pwsh-pf/main/Microsoft.PowerShell_profile.ps1"
             $oldhash = Get-FileHash $PROFILE
             Invoke-RestMethod $url -OutFile "$env:temp/Microsoft.PowerShell_profile.ps1"
             $newhash = Get-FileHash "$env:temp/Microsoft.PowerShell_profile.ps1"
