@@ -366,6 +366,9 @@ function admin {
 # Set UNIX-like aliases for the admin command, so sudo <command> will run the command with elevated rights.
 Set-Alias -Name su -Value admin
 
+# Set cat alias to bat
+Set-Alias -Name cat -Value bat
+
 function uptime {
     try {
         # find date/time format
@@ -580,9 +583,6 @@ function flushdns {
 function cpy { Set-Clipboard $args[0] }
 
 function pst { Get-Clipboard }
-
-# bat Utilities
-function bat { bat $args[0] }
 
 # Set-PSReadLineOption Compatibility for PowerShell Desktop
 function Set-PSReadLineOptionsCompat {
