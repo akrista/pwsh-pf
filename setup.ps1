@@ -208,3 +208,27 @@ try {
 catch {
     Write-Error "Failed to install gsudo. Error: $_"
 }
+# ripgrep Install
+try {
+    scoop install ripgrep
+    Write-Host "ripgrep installed successfully."
+}
+catch {
+    Write-Error "Failed to install ripgrep. Error: $_"
+}
+# fd Install
+try {
+    scoop install fd
+    Write-Host "fd installed successfully."
+}
+catch {
+    Write-Error "Failed to install fd. Error: $_"
+}
+# gitui Install
+try {
+    scoop install gitui
+    Write-Host "gitui installed successfully."
+}
+catch {
+    Write-Error "Failed to install gitui. Error: $_"
+}
