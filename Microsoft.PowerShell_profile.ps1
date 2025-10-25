@@ -84,9 +84,7 @@ if ($timeFilePath_Override) {
     $timeFilePath = $timeFilePath_Override
 }
 else {
-    # $timeFilePath = "$env:USERPROFILE\Documents\PowerShell\LastExecutionTime.txt"
-    $profileDir = Get-ProfileDir
-    $timeFilePath = "$profileDir\LastExecutionTime.txt"
+    $timeFilePath = [Environment]::GetFolderPath("MyDocuments") + "\PowerShell\LastExecutionTime.txt"
 }
 
 # Define the update interval in days, set to -1 to always check
@@ -143,7 +141,6 @@ function Test-GitHubConnection {
         return ($result.Status -eq "Success")
     }
 }
-$global:canConnectToGitHub = Test-GitHubConnection
 
 # Import Modules and External Profiles
 # Ensure Terminal-Icons module is installed before importing
@@ -164,6 +161,10 @@ function Update-Profile {
         Update-Profile_Override
     }
     else {
+        if (-not (Test-GitHubConnection)) {
+            Write-Warning "Cannot connect to GitHub. Skipping profile update."
+            return
+        }
         try {
             $url = "$repo_root/pwsh-pf/main/Microsoft.PowerShell_profile.ps1"
             $oldhash = Get-FileHash $PROFILE
@@ -208,6 +209,10 @@ function Update-PowerShell {
         Update-PowerShell_Override;
     }
     else {
+        if (-not (Test-GitHubConnection)) {
+            Write-Warning "Cannot connect to GitHub. Skipping PowerShell update."
+            return
+        }
         try {
             Write-Host "Checking for PowerShell updates..." -ForegroundColor Cyan
             $updateNeeded = $false
