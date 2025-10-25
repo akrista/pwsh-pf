@@ -159,14 +159,27 @@ try {
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
     $chocoScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')
     Invoke-Expression $chocoScript
+    Write-Host "Chocolatey installed successfully."
 }
 catch {
     Write-Error "Failed to install Chocolatey. Error: $_"
 }
-
+# scoop Install
+try {
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
+    Invoke-RestMethod -Uri https://get.scoop.sh -OutFile "$env:TEMP\install-scoop.ps1"
+    & "$env:TEMP\install-scoop.ps1" -RunAsAdmin
+    Remove-Item "$env:TEMP\install-scoop.ps1" -Force
+    scoop bucket add extras
+    Write-Host "scoop installed successfully."
+}
+catch {
+    Write-Error "Failed to install scoop. Error: $_"
+}
 # Terminal Icons Install
 try {
     Install-Module -Name Terminal-Icons -Repository PSGallery -Force
+    Write-Host "Terminal Icons module installed successfully."
 }
 catch {
     Write-Error "Failed to install Terminal Icons module. Error: $_"
@@ -178,4 +191,20 @@ try {
 }
 catch {
     Write-Error "Failed to install zoxide. Error: $_"
+}
+# bat Install
+try {
+    scoop install bat
+    Write-Host "bat installed successfully."
+}
+catch {
+    Write-Error "Failed to install bat. Error: $_"
+}
+# gsudo Install
+try {
+    scoop install gsudo
+    Write-Host "gsudo installed successfully."
+}
+catch {
+    Write-Error "Failed to install gsudo. Error: $_"
 }

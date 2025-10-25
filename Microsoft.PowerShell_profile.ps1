@@ -3,12 +3,6 @@
 
 $debug = $false
 
-# Define the path to the file that stores the last execution time
-# $timeFilePath = [Environment]::GetFolderPath("MyDocuments") + "\PowerShell\LastExecutionTime.txt"
-
-# Define the update interval in days, set to -1 to always check
-# $updateInterval = 7
-
 #################################################################################################################################
 ############                                                                                                         ############
 ############                                          !!!   WARNING:   !!!                                           ############
@@ -128,7 +122,6 @@ if ([bool]([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsSystem) 
 }
 
 # Initial GitHub.com connectivity check with 1 second timeout
-# $global:canConnectToGitHub = Test-Connection github.com -Count 1 -Quiet -TimeoutSeconds 1
 function Test-GitHubConnection {
     if ($PSVersionTable.PSEdition -eq "Core") {
         # If PowerShell Core, use a 1 second timeout
@@ -415,15 +408,12 @@ function uptime {
     }
 }
 
-# function reload-profile {
-#     & $profile
-# }
-
 function unzip ($file) {
     Write-Output("Extracting", $file, "to", $pwd)
     $fullFile = Get-ChildItem -Path $pwd -Filter $file | ForEach-Object { $_.FullName }
     Expand-Archive -Path $fullFile -DestinationPath $pwd
 }
+
 function hb {
     if ($args.Length -eq 0) {
         Write-Error "No file path specified."
@@ -452,6 +442,7 @@ function hb {
         Write-Error "Failed to upload the document. Error: $_"
     }
 }
+
 function grep($regex, $dir) {
     if ( $dir ) {
         Get-ChildItem $dir | select-string $regex
@@ -589,6 +580,9 @@ function flushdns {
 function cpy { Set-Clipboard $args[0] }
 
 function pst { Get-Clipboard }
+
+# bat Utilities
+function bat { bat $args[0] }
 
 # Set-PSReadLineOption Compatibility for PowerShell Desktop
 function Set-PSReadLineOptionsCompat {
@@ -802,8 +796,8 @@ Use '$($PSStyle.Foreground.Magenta)Show-Help$($PSStyle.Reset)' to display this h
     Write-Host $helpText
 }
 
-if (Test-Path "$PSScriptRoot\CTTcustom.ps1") {
-    Invoke-Expression -Command "& `"$PSScriptRoot\CTTcustom.ps1`""
+if (Test-Path "$PSScriptRoot\custom.ps1") {
+    Invoke-Expression -Command "& `"$PSScriptRoot\custom.ps1`""
 }
 
 Write-Host "$($PSStyle.Foreground.Yellow)Use 'Show-Help' to display help$($PSStyle.Reset)"
