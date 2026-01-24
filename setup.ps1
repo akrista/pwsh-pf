@@ -63,11 +63,9 @@ function Install-NerdFonts {
 function Get-ProfileDir {
     if ($PSVersionTable.PSEdition -eq "Core") {
         return "$env:userprofile\Documents\PowerShell"
-    }
-    elseif ($PSVersionTable.PSEdition -eq "Desktop") {
+    } elseif ($PSVersionTable.PSEdition -eq "Desktop") {
         return "$env:userprofile\Documents\WindowsPowerShell"
-    }
-    else {
+    } else {
         Write-Error "Unsupported PowerShell edition: $($PSVersionTable.PSEdition)"
         break
     }
@@ -82,12 +80,10 @@ if (-not (Test-InternetConnection)) {
 if (!(Test-Path -Path $PROFILE -PathType Leaf)) {
     try {
         $profilePath = Get-ProfileDir
-
         if (!(Test-Path -Path $profilePath)) {
             New-Item -Path $profilePath -ItemType "directory" -Force
         }
-
-        Invoke-RestMethod https://github.com/akrista/pwsh-pf/raw/main/Microsoft.PowerShell_profile.ps1 -OutFile $PROFILE
+        Invoke-RestMethod https://github.com/ChrisTitusTech/powershell-profile/raw/main/Microsoft.PowerShell_profile.ps1 -OutFile $PROFILE
         Write-Host "The profile @ [$PROFILE] has been created."
         Write-Host "If you want to make any personal changes or customizations, please do so at [$profilePath\Profile.ps1] as there is an updater in the installed profile which uses the hash to update the profile and will lead to loss of changes"
     }
@@ -112,8 +108,8 @@ else {
 # Function to download Oh My Posh theme locally
 function Install-OhMyPoshTheme {
     param (
-        [string]$ThemeName = "lambdageneration",
-        [string]$ThemeUrl = "https://raw.githubusercontent.com/akrista/pwsh-pf/main/lambdageneration.omp.json"
+        [string]$ThemeName = "cobalt2",
+        [string]$ThemeUrl = "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json"
     )
     $profilePath = Get-ProfileDir
     if (!(Test-Path -Path $profilePath)) {
@@ -140,7 +136,7 @@ catch {
 }
 
 # Download Oh My Posh theme locally
-$themeInstalled = Install-OhMyPoshTheme -ThemeName "lambdageneration"
+$themeInstalled = Install-OhMyPoshTheme -ThemeName "cobalt2"
 
 # Font Install
 Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
@@ -159,7 +155,6 @@ try {
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
     $chocoScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')
     Invoke-Expression $chocoScript
-    Write-Host "Chocolatey installed successfully."
 }
 catch {
     Write-Error "Failed to install Chocolatey. Error: $_"
