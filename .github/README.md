@@ -2,6 +2,15 @@
 
 A stylish and functional PowerShell profile that looks and feels almost as good as a Linux terminal.
 
+## Requirements
+
+The setup script will automatically verify these prerequisites before installation:
+
+- **Git SCM** (https://git-scm.com/install/windows) - Required for version control
+- **PowerShell 7+** (https://github.com/powershell/powershell/releases) - PowerShell Core is required to run this profile
+
+If either prerequisite is missing, the script will provide installation instructions and exit.
+
 ## ⚡ One Line Install (Elevated PowerShell Recommended)
 
 Execute the following command in an elevated PowerShell window to install the PowerShell profile:
@@ -10,7 +19,35 @@ Execute the following command in an elevated PowerShell window to install the Po
 irm "https://github.com/akrista/pwsh-pf/raw/master/setup.ps1" | iex
 ```
 
-## 🛠️ Fix the Missing Font
+## 📦 What Gets Installed
+
+The setup script intelligently checks for existing installations and only installs what's missing:
+
+### Package Managers
+- **Chocolatey** - Windows package manager
+- **Scoop** - Command-line installer (with extras bucket)
+
+### Terminal Tools & Utilities
+- **Oh My Posh** - Prompt theme engine
+- **Terminal-Icons** - PowerShell module for file/folder icons
+- **zoxide** - Smarter cd command with frecency
+- **bat** - Cat clone with syntax highlighting
+- **gsudo** - Sudo for Windows
+- **ripgrep** - Extremely fast text search
+- **fd** - Simple, fast alternative to find
+- **gitui** - Blazing fast terminal UI for git
+
+### Fonts & Themes
+- **CaskaydiaCove NF** - Nerd Font automatically installed
+- **lambdageneration** Oh My Posh theme
+
+### Configuration
+- PowerShell profile automatically configured
+- Execution policy set to `Unrestricted` for CurrentUser scope (allows profiles to run)
+
+**Note:** The setup script will skip any programs already installed on your system, making it safe to run multiple times.
+
+## 🛠️ Fix the Missing Font (Alternative Methods)
 
 After running the script, you'll have two options for installing a font patched to support icons in PowerShell:
 

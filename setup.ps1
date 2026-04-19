@@ -1,10 +1,30 @@
-# Ensure the script can run with elevated privileges
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Warning "Please run this script as an Administrator!"
     break
 }
 
-# Function to test internet connectivity
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Error "PowerShell 7 or higher is required to run this script."
+    Write-Host "Current version: $($PSVersionTable.PSVersion)"
+    Write-Host "Please install PowerShell 7+ from: https://aka.ms/PSWindows"
+    Write-Host "Or run: winget install Microsoft.PowerShell"
+    break
+}
+
+try {
+    $gitVersion = git --version 2>$null
+    if (-not $gitVersion) {
+        throw "Git not found"
+    }
+    Write-Host "Git is installed: $gitVersion"
+}
+catch {
+    Write-Error "Git is required but not installed."
+    Write-Host "Please install Git from: https://git-scm.com/download/win"
+    Write-Host "Or run: winget install Git.Git"
+    break
+}
+
 function Test-InternetConnection {
     try {
         Test-Connection -ComputerName www.google.com -Count 1 -ErrorAction Stop | Out-Null
@@ -16,7 +36,6 @@ function Test-InternetConnection {
     }
 }
 
-# Function to install Nerd Fonts
 function Install-NerdFonts {
     param (
         [string]$FontName = "CascadiaCode",
@@ -59,7 +78,6 @@ function Install-NerdFonts {
     }
 }
 
-# Helper function for cross-edition compatibility
 function Get-ProfileDir {
     if ($PSVersionTable.PSEdition -eq "Core") {
         return "$env:userprofile\Documents\PowerShell"
@@ -73,12 +91,63 @@ function Get-ProfileDir {
     }
 }
 
-# Check for internet connectivity before proceeding
+function Test-WingetPackageInstalled {
+    param (
+        [string]$PackageId
+    )
+    try {
+        $result = winget list --id $PackageId --exact 2>$null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-ScoopPackageInstalled {
+    param (
+        [string]$PackageName
+    )
+    try {
+        $result = scoop list $PackageName 2>$null
+        return ($result -match $PackageName)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-ChocolateyInstalled {
+    try {
+        $null = Get-Command choco -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-ScoopInstalled {
+    try {
+        $null = Get-Command scoop -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-ModuleInstalled {
+    param (
+        [string]$ModuleName
+    )
+    return (Get-Module -ListAvailable -Name $ModuleName -ErrorAction SilentlyContinue)
+}
+
 if (-not (Test-InternetConnection)) {
     break
 }
 
-# Profile creation or update
 if (!(Test-Path -Path $PROFILE -PathType Leaf)) {
     try {
         $profilePath = Get-ProfileDir
@@ -109,7 +178,6 @@ else {
     }
 }
 
-# Function to download Oh My Posh theme locally
 function Install-OhMyPoshTheme {
     param (
         [string]$ThemeName = "lambdageneration",
@@ -131,21 +199,23 @@ function Install-OhMyPoshTheme {
     }
 }
 
-# OMP Install
 try {
-    winget install -e --accept-source-agreements --accept-package-agreements JanDeDobbeleer.OhMyPosh
+    if (Test-WingetPackageInstalled -PackageId "JanDeDobbeleer.OhMyPosh") {
+        Write-Host "Oh My Posh is already installed. Skipping installation."
+    }
+    else {
+        winget install -e --accept-source-agreements --accept-package-agreements JanDeDobbeleer.OhMyPosh
+        Write-Host "Oh My Posh installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install Oh My Posh. Error: $_"
 }
 
-# Download Oh My Posh theme locally
 $themeInstalled = Install-OhMyPoshTheme -ThemeName "lambdageneration"
 
-# Font Install
 Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
 
-# Final check and message to the user
 if ((Test-Path -Path $PROFILE) -and (winget list --name "OhMyPosh" -e) -and ($fontFamilies -contains "CaskaydiaCove NF") -and $themeInstalled) {
     Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
 }
@@ -153,82 +223,140 @@ else {
     Write-Warning "Setup completed with errors. Please check the error messages above."
 }
 
-# Choco install
 try {
-    Set-ExecutionPolicy Bypass -Scope Process -Force
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-    $chocoScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')
-    Invoke-Expression $chocoScript
-    Write-Host "Chocolatey installed successfully."
+    if (Test-ChocolateyInstalled) {
+        Write-Host "Chocolatey is already installed. Skipping installation."
+    }
+    else {
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        $chocoScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')
+        Invoke-Expression $chocoScript
+        Write-Host "Chocolatey installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install Chocolatey. Error: $_"
 }
-# scoop Install
 try {
-    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
-    Invoke-RestMethod -Uri https://get.scoop.sh -OutFile "$env:TEMP\install-scoop.ps1"
-    & "$env:TEMP\install-scoop.ps1" -RunAsAdmin
-    Remove-Item "$env:TEMP\install-scoop.ps1" -Force
-    scoop bucket add extras
-    Write-Host "scoop installed successfully."
+    if (Test-ScoopInstalled) {
+        Write-Host "Scoop is already installed. Skipping installation."
+    }
+    else {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
+        Invoke-RestMethod -Uri https://get.scoop.sh -OutFile "$env:TEMP\install-scoop.ps1"
+        & "$env:TEMP\install-scoop.ps1" -RunAsAdmin
+        Remove-Item "$env:TEMP\install-scoop.ps1" -Force
+        Write-Host "Scoop installed successfully."
+    }
+    
+    # Add extras bucket if not already added
+    $buckets = scoop bucket list 2>$null
+    if ($buckets -notmatch "extras") {
+        scoop bucket add extras
+        Write-Host "Added extras bucket to Scoop."
+    }
 }
 catch {
-    Write-Error "Failed to install scoop. Error: $_"
+    Write-Error "Failed to install Scoop. Error: $_"
 }
-# Terminal Icons Install
 try {
-    Install-Module -Name Terminal-Icons -Repository PSGallery -Force
-    Write-Host "Terminal Icons module installed successfully."
+    if (Test-ModuleInstalled -ModuleName "Terminal-Icons") {
+        Write-Host "Terminal-Icons module is already installed. Skipping installation."
+    }
+    else {
+        Install-Module -Name Terminal-Icons -Repository PSGallery -Force
+        Write-Host "Terminal Icons module installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install Terminal Icons module. Error: $_"
 }
-# zoxide Install
 try {
-    winget install -e --id ajeetdsouza.zoxide
-    Write-Host "zoxide installed successfully."
+    if (Test-WingetPackageInstalled -PackageId "ajeetdsouza.zoxide") {
+        Write-Host "zoxide is already installed. Skipping installation."
+    }
+    else {
+        winget install -e --id ajeetdsouza.zoxide
+        Write-Host "zoxide installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install zoxide. Error: $_"
 }
-# bat Install
 try {
-    scoop install bat
-    Write-Host "bat installed successfully."
+    if (Test-ScoopPackageInstalled -PackageName "bat") {
+        Write-Host "bat is already installed. Skipping installation."
+    }
+    else {
+        scoop install bat
+        Write-Host "bat installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install bat. Error: $_"
 }
-# gsudo Install
 try {
-    scoop install gsudo
-    Write-Host "gsudo installed successfully."
+    if (Test-ScoopPackageInstalled -PackageName "gsudo") {
+        Write-Host "gsudo is already installed. Skipping installation."
+    }
+    else {
+        scoop install gsudo
+        Write-Host "gsudo installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install gsudo. Error: $_"
 }
-# ripgrep Install
 try {
-    scoop install ripgrep
-    Write-Host "ripgrep installed successfully."
+    if (Test-ScoopPackageInstalled -PackageName "ripgrep") {
+        Write-Host "ripgrep is already installed. Skipping installation."
+    }
+    else {
+        scoop install ripgrep
+        Write-Host "ripgrep installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install ripgrep. Error: $_"
 }
-# fd Install
 try {
-    scoop install fd
-    Write-Host "fd installed successfully."
+    if (Test-ScoopPackageInstalled -PackageName "fd") {
+        Write-Host "fd is already installed. Skipping installation."
+    }
+    else {
+        scoop install fd
+        Write-Host "fd installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install fd. Error: $_"
 }
-# gitui Install
 try {
-    scoop install gitui
-    Write-Host "gitui installed successfully."
+    if (Test-ScoopPackageInstalled -PackageName "gitui") {
+        Write-Host "gitui is already installed. Skipping installation."
+    }
+    else {
+        scoop install gitui
+        Write-Host "gitui installed successfully."
+    }
 }
 catch {
     Write-Error "Failed to install gitui. Error: $_"
 }
+
+# Set execution policy to allow running PowerShell profiles
+try {
+    Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser -Force
+    Write-Host "Execution policy set to Unrestricted for CurrentUser scope."
+    Write-Host "This allows your PowerShell profile to run automatically."
+}
+catch {
+    Write-Warning "Failed to set execution policy. You may need to run 'Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser' manually."
+}
+
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "Setup completed!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "Please restart your PowerShell session to apply all changes." -ForegroundColor Yellow
