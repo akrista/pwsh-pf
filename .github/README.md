@@ -1,6 +1,6 @@
-# 🎨 PowerShell Profile (Pretty PowerShell)
+# 🎨 Pretty PowerShell
 
-A stylish and functional PowerShell profile that looks and feels almost as good as a Linux terminal.
+A clean, modern PowerShell profile designed to make Windows terminals feel fast, polished, and closer to a modern Linux shell experience.
 
 ## Requirements
 

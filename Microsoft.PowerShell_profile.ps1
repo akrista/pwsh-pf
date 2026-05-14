@@ -1,5 +1,4 @@
-### PowerShell Profile Refactor
-### Version 1.04 - Refactored
+### Chris Titus Tech's PowerShell profile
 
 $debug = $false
 
@@ -50,12 +49,10 @@ else {
 # Helper function for cross-edition compatibility
 function Get-ProfileDir {
     if ($PSVersionTable.PSEdition -eq "Core") {
-        return "$env:userprofile\Documents\PowerShell"
-    }
-    elseif ($PSVersionTable.PSEdition -eq "Desktop") {
-        return "$env:userprofile\Documents\WindowsPowerShell"
-    }
-    else {
+        return [Environment]::GetFolderPath("MyDocuments") + "\PowerShell"
+    } elseif ($PSVersionTable.PSEdition -eq "Desktop") {
+        return [Environment]::GetFolderPath("MyDocuments") + "\WindowsPowerShell"
+    } else {
         Write-Error "Unsupported PowerShell edition: $($PSVersionTable.PSEdition)"
         return $null
     }
@@ -69,18 +66,6 @@ if ($repo_root_Override) {
 }
 else {
     $repo_root = "https://raw.githubusercontent.com/akrista"
-}
-
-# Helper function for cross-edition compatibility
-function Get-ProfileDir {
-    if ($PSVersionTable.PSEdition -eq "Core") {
-        return [Environment]::GetFolderPath("MyDocuments") + "\PowerShell"
-    } elseif ($PSVersionTable.PSEdition -eq "Desktop") {
-        return [Environment]::GetFolderPath("MyDocuments") + "\WindowsPowerShell"
-    } else {
-        Write-Error "Unsupported PowerShell edition: $($PSVersionTable.PSEdition)"
-        return $null
-    }
 }
 
 # Define the path to the file that stores the last execution time
@@ -154,10 +139,23 @@ $global:canConnectToGitHub = Test-GitHubConnection
 if (-not (Get-Module -ListAvailable -Name Terminal-Icons)) {
     Install-Module -Name Terminal-Icons -Scope CurrentUser -Force -SkipPublisherCheck
 }
+
 Import-Module -Name Terminal-Icons
-$ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
-if (Test-Path($ChocolateyProfile)) {
-    Import-Module "$ChocolateyProfile"
+
+Write-Host "Use 'Show-Help' to list all available functions" -ForegroundColor Yellow
+
+# History & Colors
+Set-PSReadLineOption -PredictionViewStyle ListView -Colors @{
+    Command   = '#87CEEB'
+    Parameter = '#98FB98'
+    Operator  = '#FFB6C1'
+    Variable  = '#DDA0DD'
+    String    = '#FFDAB9'
+    Number    = '#B0E0E6'
+    Type      = '#F0E68C'
+    Comment   = '#D3D3D3'
+    Keyword   = '#8367c7'
+    Error     = '#FF6347'
 }
 
 # Safely read and parse the last execution date once to avoid exceptions when the file is missing or empty
@@ -392,7 +390,7 @@ function uptime {
         # find date/time format
         $dateFormat = [System.Globalization.CultureInfo]::CurrentCulture.DateTimeFormat.ShortDatePattern
         $timeFormat = [System.Globalization.CultureInfo]::CurrentCulture.DateTimeFormat.LongTimePattern
-		
+
         # check powershell version
         if ($PSVersionTable.PSVersion.Major -eq 5) {
             $lastBoot = (Get-WmiObject win32_operatingsystem).LastBootUpTime
@@ -403,7 +401,7 @@ function uptime {
         }
         else {
             # the Get-Uptime cmdlet was introduced in PowerShell 6.0
-            $lastBoot = (Get-Uptime -Since).ToString("$dateFormat $timeFormat")			
+            $lastBoot = (Get-Uptime -Since).ToString("$dateFormat $timeFormat")
             $bootTime = [System.DateTime]::ParseExact($lastBoot, "$dateFormat $timeFormat", [System.Globalization.CultureInfo]::InvariantCulture)
         }
 
@@ -440,9 +438,9 @@ function hb {
         Write-Error "No file path specified."
         return
     }
-    
+
     $FilePath = $args[0]
-    
+
     if (Test-Path $FilePath) {
         $Content = Get-Content $FilePath -Raw
     }
@@ -450,7 +448,7 @@ function hb {
         Write-Error "File path does not exist."
         return
     }
-    
+
     $uri = "http://bin.christitus.com/documents"
     try {
         $response = Invoke-RestMethod -Uri $uri -Method Post -Body $Content -ErrorAction Stop
@@ -546,12 +544,12 @@ function trash($path) {
 ### Quality of Life Aliases
 
 # Navigation Shortcuts
-function docs { 
+function docs {
     $docs = if (([Environment]::GetFolderPath("MyDocuments"))) { ([Environment]::GetFolderPath("MyDocuments")) } else { $HOME + "\Documents" }
     Set-Location -Path $docs
 }
-    
-function dtop { 
+
+function dtop {
     $dtop = if ([Environment]::GetFolderPath("Desktop")) { [Environment]::GetFolderPath("Desktop") } else { $HOME + "\Documents" }
     Set-Location -Path $dtop
 }
@@ -653,14 +651,6 @@ Set-PSReadLineKeyHandler -Chord 'Ctrl+RightArrow' -Function ForwardWord
 Set-PSReadLineKeyHandler -Chord 'Ctrl+z' -Function Undo
 Set-PSReadLineKeyHandler -Chord 'Ctrl+y' -Function Redo
 
-# Custom functions for PSReadLine
-Set-PSReadLineOption -AddToHistoryHandler {
-    param($line)
-    $sensitive = @('password', 'secret', 'token', 'apikey', 'connectionstring')
-    $hasSensitive = $sensitive | Where-Object { $line -match $_ }
-    return ($null -eq $hasSensitive)
-}
-
 # Fix Set-PredictionSource for Desktop
 function Set-PredictionSource {
     # If "Set-PredictionSource_Override" is defined in profile.ps1 file
@@ -678,7 +668,15 @@ function Set-PredictionSource {
         Set-PSReadLineOption -MaximumHistoryCount 10000
     }
 }
-Set-PredictionSource
+
+# File / Directory Utilities - merged touch behavior (update timestamp if exists, create if not)
+function touch ($File) {
+    if (Test-Path $File) {
+        (Get-Item $File).LastWriteTime = Get-Date
+    } else {
+        New-Item $File -ItemType File | Out-Null
+    }
+}
 
 # Custom completion for common commands
 $scriptblock = {
@@ -688,7 +686,7 @@ $scriptblock = {
         'npm'  = @('install', 'start', 'run', 'test', 'build')
         'deno' = @('run', 'compile', 'bundle', 'test', 'lint', 'fmt', 'cache', 'info', 'doc', 'upgrade')
     }
-    
+
     $command = $commandAst.CommandElements[0].Value
     if ($customCompletions.ContainsKey($command)) {
         $customCompletions[$command] | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
@@ -696,15 +694,11 @@ $scriptblock = {
         }
     }
 }
-Register-ArgumentCompleter -Native -CommandName git, npm, deno -ScriptBlock $scriptblock
 
 $scriptblock = {
     param($wordToComplete, $commandAst, $cursorPosition)
     dotnet complete --position $cursorPosition $commandAst.ToString() |
     ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-    }
-        ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
 }
@@ -811,10 +805,7 @@ $($PSStyle.Foreground.Green)which$($PSStyle.Reset) <name> - Shows the path of th
 $($PSStyle.Foreground.Green)winutil$($PSStyle.Reset) - Runs the latest WinUtil full-release script from Chris Titus Tech.
 $($PSStyle.Foreground.Green)winutildev$($PSStyle.Reset) - Runs the latest WinUtil pre-release script from Chris Titus Tech.
 $($PSStyle.Foreground.Yellow)=======================$($PSStyle.Reset)
-
-Use '$($PSStyle.Foreground.Magenta)Show-Help$($PSStyle.Reset)' to display this help message.
 "@
-    Write-Host $helpText
 }
 
 if (Test-Path "$PSScriptRoot\custom.ps1") {
