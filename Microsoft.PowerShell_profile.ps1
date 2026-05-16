@@ -811,5 +811,3 @@ $($PSStyle.Foreground.Yellow)=======================$($PSStyle.Reset)
 if (Test-Path "$PSScriptRoot\custom.ps1") {
     Invoke-Expression -Command "& `"$PSScriptRoot\custom.ps1`""
 }
-
-Write-Host "$($PSStyle.Foreground.Yellow)Use 'Show-Help' to display help$($PSStyle.Reset)"
