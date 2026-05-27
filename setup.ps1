@@ -214,7 +214,7 @@ try {
         Write-Host "Oh My Posh is already installed. Skipping installation."
     }
     else {
-        winget install -e --accept-source-agreements --accept-package-agreements JanDeDobbeleer.OhMyPosh
+        winget install -e --accept-source-agreements --accept-package-agreements JanDeDobbeleer.OhMyPosh --source winget
         Write-Host "Oh My Posh installed successfully."
     }
 }
