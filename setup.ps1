@@ -191,7 +191,7 @@ else {
 function Install-OhMyPoshTheme {
     param (
         [string]$ThemeName = "lambdageneration",
-        [string]$ThemeUrl = "https://raw.githubusercontent.com/akrista/pwsh-pf/refs/heads/master/lambdageneration.omp.json"
+        [string]$ThemeUrl = "https://raw.githubusercontent.com/akrista/.akrista/refs/heads/master/lambdageneration.omp.json"
     )
     $profilePath = Get-ProfileDir
     if (!(Test-Path -Path $profilePath)) {
