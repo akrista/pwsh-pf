@@ -161,7 +161,6 @@ if (Test-Path $Profile) {
 if (!(Test-Path -Path $Profile -PathType Leaf)) {
     try {
         $profilePath = Get-ProfileDir
-
         if (!(Test-Path -Path $profilePath)) {
             New-Item -Path $profilePath -ItemType "directory" -Force
         }
@@ -178,7 +177,7 @@ else {
     try {
         $backupPath = Join-Path (Split-Path $Profile) "oldprofile.ps1"
         Move-Item -Path $Profile -Destination $backupPath -Force
-        Invoke-RestMethod https://github.com/akrista/pwsh-pf/raw/main/Microsoft.PowerShell_profile.ps1 -OutFile $Profile
+        Invoke-RestMethod https://github.com/akrista/pwsh-pf/raw/master/Microsoft.PowerShell_profile.ps1 -OutFile $Profile
         Write-Host "✅ PowerShell profile at [$Profile] has been updated."
         Write-Host "📦 Your old profile has been backed up to [$backupPath]"
         Write-Host "⚠️ NOTE: Please back up any persistent components of your old profile to [$HOME\Documents\PowerShell\Profile.ps1] as there is an updater in the installed profile which uses the hash to update the profile and will lead to loss of changes"

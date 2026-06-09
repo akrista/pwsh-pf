@@ -68,6 +68,13 @@ else {
     $repo_root = "https://raw.githubusercontent.com/akrista"
 }
 
+# Define the default posh theme path
+$poshTheme = if (-not [string]::IsNullOrWhiteSpace($env:POSH_THEME)) {
+    $env:POSH_THEME
+} else {
+    Join-Path (Get-ProfileDir) 'lambdageneration.omp.json'
+}
+
 # Define the path to the file that stores the last execution time
 if ($timeFilePath_Override) {
     # If variable $timeFilePath_Override is defined in profile.ps1 file
@@ -136,11 +143,15 @@ $global:canConnectToGitHub = Test-GitHubConnection
 
 # Import Modules and External Profiles
 # Ensure Terminal-Icons module is installed before importing
-if (-not (Get-Module -ListAvailable -Name Terminal-Icons)) {
+if (-not (Get-Module -ListAvailable -Name Terminal-Icons) -and $global:canConnectToGitHub) {
     Install-Module -Name Terminal-Icons -Scope CurrentUser -Force -SkipPublisherCheck
 }
 
-Import-Module -Name Terminal-Icons
+if (Get-Module -ListAvailable -Name Terminal-Icons) {
+    Import-Module -Name Terminal-Icons
+} else {
+    Write-Warning "Terminal-Icons module not found."
+}
 
 Write-Host "Use 'Show-Help' to list all available functions" -ForegroundColor Yellow
 
@@ -341,7 +352,7 @@ function Invoke-Profile {
     & $PROFILE
 }
 
-function touch($file) { "" | Out-File $file -Encoding ASCII }
+
 function ff($name) {
     Get-ChildItem -recurse -filter "*${name}*" -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Output "$($_.FullName)"
@@ -486,12 +497,12 @@ function export($name, $value) {
     set-item -force -path "env:$name" -value $value;
 }
 
-function pkill($name) {
-    Get-Process $name -ErrorAction SilentlyContinue | Stop-Process
+function pgrep ($Name) {
+    Get-Process -Name $Name -ErrorAction SilentlyContinue
 }
 
-function pgrep($name) {
-    Get-Process $name
+function pkill ($Name) {
+    Get-Process -Name $Name -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 
 function head {
@@ -555,7 +566,9 @@ function dtop {
 }
 
 # Simplified Process Management
-function k9 { Stop-Process -Name $args[0] }
+function k9 ($Name) {
+    pkill $Name
+}
 
 # Enhanced Listing
 function la { Get-ChildItem | Format-Table -AutoSize }
@@ -563,13 +576,10 @@ function ll { Get-ChildItem -Force | Format-Table -AutoSize }
 
 # Git Shortcuts
 function gs { git status }
-
 function ga { git add . }
-
 function gc { param($m) git commit -m "$m" }
-
+function gp { git push }
 function gpush { git push }
-
 function gpull { git pull }
 
 function g { __zoxide_z github }
@@ -704,48 +714,6 @@ $scriptblock = {
 }
 Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
 
-# If function "Get-Theme_Override" is defined in profile.ps1 file
-# then call it instead.
-if (Get-Command -Name "Get-Theme_Override" -ErrorAction SilentlyContinue) {
-    Get-Theme_Override
-}
-else {
-    # Oh My Posh initialization with local theme fallback and auto-download
-    $localThemePath = Join-Path (Get-ProfileDir) "lambdageneration.omp.json"
-    if (-not (Test-Path $localThemePath)) {
-        # Try to download the theme file to the detected local path
-        $themeUrl = "https://raw.githubusercontent.com/akrista/.akrista/master/lambdageneration.omp.json"
-        try {
-            Invoke-RestMethod -Uri $themeUrl -OutFile $localThemePath
-            Write-Host "Downloaded missing Oh My Posh theme to $localThemePath"
-        }
-        catch {
-            Write-Warning "Failed to download theme file. Falling back to remote theme. Error: $_"
-        }
-    }
-    if (Test-Path $localThemePath) {
-        oh-my-posh init pwsh --config $localThemePath | Invoke-Expression
-    }
-    else {
-        # Fallback to remote theme if local file doesn't exist
-        oh-my-posh init pwsh --config https://raw.githubusercontent.com/akrista/.akrista/master/lambdageneration.omp.json | Invoke-Expression
-    }
-}
-
-if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    Invoke-Expression (& { (zoxide init --cmd z powershell | Out-String) })
-}
-else {
-    Write-Host "zoxide command not found. Attempting to install via winget..."
-    try {
-        winget install -e --id ajeetdsouza.zoxide
-        Write-Host "zoxide installed successfully. Initializing..."
-        Invoke-Expression (& { (zoxide init --cmd z powershell | Out-String) })
-    }
-    catch {
-        Write-Error "Failed to install zoxide. Error: $_"
-    }
-}
 
 # Help Function
 function Show-Help {
@@ -808,6 +776,59 @@ $($PSStyle.Foreground.Yellow)=======================$($PSStyle.Reset)
 "@
 }
 
+# oh-my-posh and zoxide initialization at the end of the profile
+$shouldInitPosh = $false
+if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+    if (Get-Command -Name "Get-Theme_Override" -ErrorAction SilentlyContinue) {
+        $shouldInitPosh = $true
+    } else {
+        # Oh My Posh initialization with local theme fallback and auto-download
+        $localThemePath = $poshTheme
+        if (-not (Test-Path $localThemePath) -and $global:canConnectToGitHub) {
+            # Try to download the theme file to the detected local path
+            $themeUrl = "https://raw.githubusercontent.com/akrista/.akrista/master/lambdageneration.omp.json"
+            try {
+                Invoke-RestMethod -Uri $themeUrl -OutFile $localThemePath
+                Write-Host "Downloaded missing Oh My Posh theme to $localThemePath"
+                $shouldInitPosh = $true
+            }
+            catch {
+                Write-Warning "Failed to download theme file. Falling back to remote theme. Error: $_"
+                $poshTheme = "https://raw.githubusercontent.com/akrista/.akrista/master/lambdageneration.omp.json"
+                $shouldInitPosh = $true
+            }
+        } elseif (Test-Path $localThemePath) {
+            $shouldInitPosh = $true
+        } else {
+            # Fallback to remote theme if local file doesn't exist and we cannot connect or download failed
+            $poshTheme = "https://raw.githubusercontent.com/akrista/.akrista/master/lambdageneration.omp.json"
+            $shouldInitPosh = $true
+        }
+    }
+} else {
+    Write-Warning "oh-my-posh is not installed."
+}
+
+$shouldInitZoxide = $false
+if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    $shouldInitZoxide = $true
+} else {
+    Write-Warning "zoxide is not installed."
+}
+
+# Run the initializations
+if ($shouldInitPosh) {
+    if (Get-Command -Name "Get-Theme_Override" -ErrorAction SilentlyContinue) {
+        Get-Theme_Override
+    } else {
+        Invoke-Expression (& { (oh-my-posh init pwsh --config $poshTheme | Out-String) })
+    }
+}
+if ($shouldInitZoxide) {
+    Invoke-Expression (& { (zoxide init --cmd z powershell | Out-String) })
+}
+
+# Local custom script hook
 if (Test-Path "$PSScriptRoot\custom.ps1") {
     Invoke-Expression -Command "& `"$PSScriptRoot\custom.ps1`""
 }
