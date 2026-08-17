@@ -1,371 +1,296 @@
-#requires -RunAsAdministrator
-#requires -Version 7.0
+$profileSourceUri = 'https://github.com/akrista/pwsh-pf/raw/master/Microsoft.PowerShell_profile.ps1'
+$themeSourceUri = 'https://raw.githubusercontent.com/akrista/.akrista/refs/heads/master/lambdageneration.omp.json'
 
-if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Warning "Please run this script as an Administrator!"
-    break
-}
-
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Error "PowerShell 7 or higher is required to run this script."
-    Write-Host "Current version: $($PSVersionTable.PSVersion)"
-    Write-Host "Please install PowerShell 7+ from: https://aka.ms/PSWindows"
-    Write-Host "Or run: winget install Microsoft.PowerShell"
-    break
-}
-
-try {
-    $gitVersion = git --version 2>$null
-    if (-not $gitVersion) {
-        throw "Git not found"
-    }
-    Write-Host "Git is installed: $gitVersion"
-}
-catch {
-    Write-Error "Git is required but not installed."
-    Write-Host "Please install Git from: https://git-scm.com/download/win"
-    Write-Host "Or run: winget install Git.Git"
-    break
-}
-
-function Test-InternetConnection {
+function Enable-Tls12 {
     try {
-        Test-Connection -ComputerName www.google.com -Count 1 -ErrorAction Stop | Out-Null
-        return $true
-    }
-    catch {
-        Write-Warning "Internet connection is required but not available. Please check your connection."
-        return $false
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    } catch {
+        Write-Verbose "Unable to enable TLS 1.2 explicitly: $_"
     }
 }
 
-function Install-NerdFonts {
-    param (
-        [string]$FontName = "CascadiaCode",
-        [string]$FontDisplayName = "CaskaydiaCove NF",
-        [string]$Version = "3.2.1"
+Enable-Tls12
+
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]$identity
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Test-Command {
+    param([Parameter(Mandatory)][string]$Name)
+    $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue)
+}
+
+function Save-UriToFile {
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [Parameter(Mandatory)][string]$OutFile
     )
 
+    $client = New-Object System.Net.WebClient
     try {
-        [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Drawing")
-        $fontFamilies = (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name
-        if ($fontFamilies -notcontains "${FontDisplayName}") {
-            $fontZipUrl = "https://github.com/ryanoasis/nerd-fonts/releases/download/v${Version}/${FontName}.zip"
-            $zipFilePath = "$env:TEMP\${FontName}.zip"
-            $extractPath = "$env:TEMP\${FontName}"
-
-            $webClient = New-Object System.Net.WebClient
-            $webClient.DownloadFileAsync((New-Object System.Uri($fontZipUrl)), $zipFilePath)
-
-            while ($webClient.IsBusy) {
-                Start-Sleep -Seconds 2
-            }
-
-            Expand-Archive -Path $zipFilePath -DestinationPath $extractPath -Force
-            $destination = (New-Object -ComObject Shell.Application).Namespace(0x14)
-            Get-ChildItem -Path $extractPath -Recurse -Filter "*.ttf" | ForEach-Object {
-                If (-not(Test-Path "C:\Windows\Fonts\$($_.Name)")) {
-                    $destination.CopyHere($_.FullName, 0x10)
-                }
-            }
-
-            Remove-Item -Path $extractPath -Recurse -Force
-            Remove-Item -Path $zipFilePath -Force
-        }
-        else {
-            Write-Host "Font ${FontDisplayName} already installed"
-        }
-    }
-    catch {
-        Write-Error "Failed to download or install ${FontDisplayName} font. Error: $_"
+        $client.DownloadFile($Uri, $OutFile)
+    } finally {
+        $client.Dispose()
     }
 }
 
 function Get-ProfileDir {
-    if ($PSVersionTable.PSEdition -eq "Core") {
-        return "$env:userprofile\Documents\PowerShell"
-    }
-    elseif ($PSVersionTable.PSEdition -eq "Desktop") {
-        return "$env:userprofile\Documents\WindowsPowerShell"
-    }
-    else {
-        Write-Error "Unsupported PowerShell edition: $($PSVersionTable.PSEdition)"
-        break
+    switch ($PSVersionTable.PSEdition) {
+        'Core' { Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell'; break }
+        'Desktop' { Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell'; break }
+        default { throw "Unsupported PowerShell edition: $($PSVersionTable.PSEdition)" }
     }
 }
 
-function Test-WingetPackageInstalled {
-    param (
-        [string]$PackageId
-    )
+function Test-InternetConnection {
+    $response = $null
     try {
-        $result = winget list --id $PackageId --exact 2>$null
-        return $LASTEXITCODE -eq 0
+        $request = [System.Net.WebRequest]::Create('https://github.com')
+        $request.Method = 'HEAD'
+        $request.Timeout = 10000
+        $response = $request.GetResponse()
+        return $true
+    } catch {
+        Write-Warning 'Internet connection is required but GitHub is not reachable.'
+        return $false
+    } finally {
+        if ($response) {
+            $response.Close()
+        }
     }
-    catch {
+}
+
+function Save-ProfileBackup {
+    param([Parameter(Mandatory)][string]$ProfilePath)
+
+    if (-not (Test-Path -Path $ProfilePath -PathType Leaf)) {
+        return $null
+    }
+
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $backupPath = Join-Path (Split-Path -Path $ProfilePath -Parent) "oldprofile-$timestamp.ps1"
+    Copy-Item -Path $ProfilePath -Destination $backupPath -Force
+    return $backupPath
+}
+
+function Install-Profile {
+    param(
+        [Parameter(Mandatory)][string]$SourceUri,
+        [Parameter(Mandatory)][string]$ProfilePath
+    )
+
+    $profileDir = Split-Path -Path $ProfilePath -Parent
+    if (-not (Test-Path -Path $profileDir)) {
+        New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
+    }
+
+    $tempProfile = Join-Path $env:TEMP 'Microsoft.PowerShell_profile.ps1'
+    try {
+        Save-UriToFile -Uri $SourceUri -OutFile $tempProfile
+        $backupPath = Save-ProfileBackup -ProfilePath $ProfilePath
+        Copy-Item -Path $tempProfile -Destination $ProfilePath -Force
+
+        Write-Host "PowerShell profile installed to [$ProfilePath]."
+        if ($backupPath) {
+            Write-Host "Previous profile backed up to [$backupPath]."
+        }
+    } finally {
+        Remove-Item -Path $tempProfile -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-WinGetPackage {
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    if (-not (Test-Command winget)) {
+        Write-Warning "winget was not found. Skipping $Name."
+        return $false
+    }
+
+    try {
+        winget install --id $Id --exact --source winget --accept-source-agreements --accept-package-agreements --silent
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "winget failed to install $Name. Exit code: $LASTEXITCODE"
+            return $false
+        }
+        return $true
+    } catch {
+        Write-Warning "Failed to install $Name. Error: $_"
         return $false
     }
 }
 
-function Test-ScoopPackageInstalled {
-    param (
-        [string]$PackageName
+function Install-OhMyPoshTheme {
+    param(
+        [string]$ThemeName = 'lambdageneration',
+        [string]$ThemeUri = $themeSourceUri
     )
-    try {
-        $result = scoop list $PackageName 2>$null
-        return ($result -match $PackageName)
+
+    $profileDir = Get-ProfileDir
+    if (-not (Test-Path -Path $profileDir)) {
+        New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
     }
-    catch {
-        return $false
+
+    $themePath = Join-Path $profileDir "$ThemeName.omp.json"
+    try {
+        Save-UriToFile -Uri $ThemeUri -OutFile $themePath
+        Write-Host "Oh My Posh theme installed to [$themePath]."
+        return $themePath
+    } catch {
+        Write-Warning "Failed to download Oh My Posh theme. Error: $_"
+        return $null
     }
 }
 
-function Test-ChocolateyInstalled {
+function Get-InstalledFontName {
     try {
-        $null = Get-Command choco -ErrorAction Stop
+        Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+        return (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name
+    } catch {
+        Write-Warning "Unable to inspect installed fonts. Error: $_"
+        return @()
+    }
+}
+
+function Install-NerdFont {
+    param(
+        [string]$FontName = 'CascadiaCode',
+        [string]$FontDisplayName = 'CaskaydiaCove NF',
+        [string]$Version = '3.2.1'
+    )
+
+    if ((Get-InstalledFontName) -contains $FontDisplayName) {
+        Write-Host "Font [$FontDisplayName] is already installed."
         return $true
     }
-    catch {
+
+    $fontZipUrl = "https://github.com/ryanoasis/nerd-fonts/releases/download/v$Version/$FontName.zip"
+    $zipFilePath = Join-Path $env:TEMP "$FontName.zip"
+    $extractPath = Join-Path $env:TEMP $FontName
+
+    try {
+        Remove-Item -Path $extractPath -Recurse -Force -ErrorAction SilentlyContinue
+        Save-UriToFile -Uri $fontZipUrl -OutFile $zipFilePath
+        Expand-Archive -Path $zipFilePath -DestinationPath $extractPath -Force
+
+        $fontShellFolder = (New-Object -ComObject Shell.Application).Namespace(0x14)
+        Get-ChildItem -Path $extractPath -Recurse -Filter '*.ttf' | ForEach-Object {
+            if (-not (Test-Path "C:\Windows\Fonts\$($_.Name)")) {
+                $fontShellFolder.CopyHere($_.FullName, 0x10)
+            }
+        }
+
+        Write-Host "Font [$FontDisplayName] installed."
+        return $true
+    } catch {
+        Write-Warning "Failed to install $FontDisplayName. Error: $_"
+        return $false
+    } finally {
+        Remove-Item -Path $extractPath -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $zipFilePath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-TerminalIconsModule {
+    try {
+        Install-Module -Name Terminal-Icons -Repository PSGallery -Scope CurrentUser -Force -SkipPublisherCheck
+        Write-Host 'Terminal-Icons module installed.'
+        return $true
+    } catch {
+        Write-Warning "Failed to install Terminal-Icons. Error: $_"
         return $false
     }
 }
 
 function Test-ScoopInstalled {
-    try {
-        $null = Get-Command scoop -ErrorAction Stop
+    return (Test-Command scoop)
+}
+
+function Install-Scoop {
+    if (Test-ScoopInstalled) {
+        Write-Host 'Scoop is already installed. Skipping installation.'
         return $true
     }
-    catch {
+
+    try {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
+        Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+        if (-not (Test-ScoopInstalled)) {
+            Write-Warning 'Scoop install did not finish cleanly. Please re-run this script.'
+            return $false
+        }
+        Write-Host 'Scoop installed successfully.'
+        return $true
+    } catch {
+        Write-Warning "Failed to install Scoop. Error: $_"
         return $false
     }
 }
 
-function Test-ModuleInstalled {
-    param (
-        [string]$ModuleName
+function Install-ScoopPackage {
+    param(
+        [Parameter(Mandatory)][string]$Name
     )
-    return (Get-Module -ListAvailable -Name $ModuleName -ErrorAction SilentlyContinue)
+
+    if (-not (Test-ScoopInstalled)) {
+        Write-Warning "Scoop is not installed. Skipping $Name."
+        return $false
+    }
+
+    try {
+        if (scoop list $Name 2>$null | Select-String -Quiet $Name) {
+            Write-Host "$Name is already installed. Skipping."
+            return $true
+        }
+        scoop install $Name
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Scoop failed to install $Name. Exit code: $LASTEXITCODE"
+            return $false
+        }
+        return $true
+    } catch {
+        Write-Warning "Failed to install $Name. Error: $_"
+        return $false
+    }
+}
+
+if (-not (Test-IsAdministrator)) {
+    Write-Warning 'Please run this script as an Administrator.'
+    return
 }
 
 if (-not (Test-InternetConnection)) {
-    break
+    return
 }
-if (Test-Path $Profile) {
-    Move-Item -Path $Profile -Destination ($Profile + ".bak") -Force
+
+try {
+    [Environment]::SetEnvironmentVariable('POWERSHELL_TELEMETRY_OPTOUT', '1', [EnvironmentVariableTarget]::Machine)
+} catch {
+    Write-Warning "Unable to set PowerShell telemetry opt-out. Error: $_"
+}
+
+$profilePath = $PROFILE.CurrentUserCurrentHost
+Install-Profile -SourceUri $profileSourceUri -ProfilePath $profilePath
+Install-WinGetPackage -Id 'JanDeDobbeleer.OhMyPosh' -Name 'Oh My Posh' | Out-Null
+Install-OhMyPoshTheme | Out-Null
+Install-NerdFont | Out-Null
+Install-TerminalIconsModule | Out-Null
+
+if (Install-Scoop) {
+    scoop bucket add extras 2>$null | Out-Null
+    Install-WinGetPackage -Id 'ajeetdsouza.zoxide' -Name 'zoxide' | Out-Null
+    Install-ScoopPackage -Name 'bat' | Out-Null
+    Install-ScoopPackage -Name 'gsudo' | Out-Null
+    Install-ScoopPackage -Name 'ripgrep' | Out-Null
+    Install-ScoopPackage -Name 'fd' | Out-Null
+    Install-ScoopPackage -Name 'gitui' | Out-Null
 } else {
-    New-Item -Path $Profile -Force | Out-Null
+    Write-Warning 'Scoop install failed. Skipping Scoop-based tools (zoxide, bat, gsudo, ripgrep, fd, gitui).'
 }
 
-[System.Environment]::SetEnvironmentVariable('POWERSHELL_TELEMETRY_OPTOUT','1','Machine')
-
-if (!(Test-Path -Path $Profile -PathType Leaf)) {
-    try {
-        $profilePath = Get-ProfileDir
-        if (!(Test-Path -Path $profilePath)) {
-            New-Item -Path $profilePath -ItemType "directory" -Force
-        }
-
-        Invoke-RestMethod https://github.com/akrista/pwsh-pf/raw/master/Microsoft.PowerShell_profile.ps1 -OutFile $Profile
-        Write-Host "The profile @ [$Profile] has been created."
-        Write-Host "If you want to make any personal changes or customizations, please do so at [$profilePath\Profile.ps1] as there is an updater in the installed profile which uses the hash to update the profile and will lead to loss of changes"
-    }
-    catch {
-        Write-Error "Failed to create or update the profile. Error: $_"
-    }
-}
-else {
-    try {
-        $backupPath = Join-Path (Split-Path $Profile) "oldprofile.ps1"
-        Move-Item -Path $Profile -Destination $backupPath -Force
-        Invoke-RestMethod https://github.com/akrista/pwsh-pf/raw/master/Microsoft.PowerShell_profile.ps1 -OutFile $Profile
-        Write-Host "✅ PowerShell profile at [$Profile] has been updated."
-        Write-Host "📦 Your old profile has been backed up to [$backupPath]"
-        Write-Host "⚠️ NOTE: Please back up any persistent components of your old profile to [$HOME\Documents\PowerShell\Profile.ps1] as there is an updater in the installed profile which uses the hash to update the profile and will lead to loss of changes"
-    }
-    catch {
-        Write-Error "❌ Failed to backup and update the profile. Error: $_"
-    }
-}
-
-function Install-OhMyPoshTheme {
-    param (
-        [string]$ThemeName = "lambdageneration",
-        [string]$ThemeUrl = "https://raw.githubusercontent.com/akrista/.akrista/refs/heads/master/lambdageneration.omp.json"
-    )
-    $profilePath = Get-ProfileDir
-    if (!(Test-Path -Path $profilePath)) {
-        New-Item -Path $profilePath -ItemType "directory"
-    }
-    $themeFilePath = Join-Path $profilePath "$ThemeName.omp.json"
-    try {
-        Invoke-RestMethod -Uri $ThemeUrl -OutFile $themeFilePath
-        Write-Host "Oh My Posh theme '$ThemeName' has been downloaded to [$themeFilePath]"
-        return $themeFilePath
-    }
-    catch {
-        Write-Error "Failed to download Oh My Posh theme. Error: $_"
-        return $null
-    }
-}
-
-try {
-    if (Test-WingetPackageInstalled -PackageId "JanDeDobbeleer.OhMyPosh") {
-        Write-Host "Oh My Posh is already installed. Skipping installation."
-    }
-    else {
-        winget install -e --accept-source-agreements --accept-package-agreements JanDeDobbeleer.OhMyPosh --source winget
-        Write-Host "Oh My Posh installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install Oh My Posh. Error: $_"
-}
-
-$themeInstalled = Install-OhMyPoshTheme -ThemeName "lambdageneration"
-
-Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
-
-if ((Test-Path -Path $Profile) -and (winget list --name "OhMyPosh" -e) -and ($fontFamilies -contains "CaskaydiaCove NF") -and $themeInstalled) {
-    Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
-}
-else {
-    Write-Warning "Setup completed with errors. Please check the error messages above."
-}
-
-try {
-    if (Test-ChocolateyInstalled) {
-        Write-Host "Chocolatey is already installed. Skipping installation."
-    }
-    else {
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        $chocoScript = (New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')
-        Invoke-Expression $chocoScript
-        Write-Host "Chocolatey installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install Chocolatey. Error: $_"
-}
-try {
-    if (Test-ScoopInstalled) {
-        Write-Host "Scoop is already installed. Skipping installation."
-    }
-    else {
-        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
-        Invoke-RestMethod -Uri https://get.scoop.sh -OutFile "$env:TEMP\install-scoop.ps1"
-        & "$env:TEMP\install-scoop.ps1" -RunAsAdmin
-        Remove-Item "$env:TEMP\install-scoop.ps1" -Force
-        Write-Host "Scoop installed successfully."
-    }
-    
-    # Add extras bucket if not already added
-    $buckets = scoop bucket list 2>$null
-    if ($buckets -notmatch "extras") {
-        scoop bucket add extras
-        Write-Host "Added extras bucket to Scoop."
-    }
-}
-catch {
-    Write-Error "Failed to install Scoop. Error: $_"
-}
-try {
-    if (Test-ModuleInstalled -ModuleName "Terminal-Icons") {
-        Write-Host "Terminal-Icons module is already installed. Skipping installation."
-    }
-    else {
-        Install-Module -Name Terminal-Icons -Repository PSGallery -Force
-        Write-Host "Terminal Icons module installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install Terminal Icons module. Error: $_"
-}
-try {
-    if (Test-WingetPackageInstalled -PackageId "ajeetdsouza.zoxide") {
-        Write-Host "zoxide is already installed. Skipping installation."
-    }
-    else {
-        winget install -e --id ajeetdsouza.zoxide
-        Write-Host "zoxide installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install zoxide. Error: $_"
-}
-try {
-    if (Test-ScoopPackageInstalled -PackageName "bat") {
-        Write-Host "bat is already installed. Skipping installation."
-    }
-    else {
-        scoop install bat
-        Write-Host "bat installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install bat. Error: $_"
-}
-try {
-    if (Test-ScoopPackageInstalled -PackageName "gsudo") {
-        Write-Host "gsudo is already installed. Skipping installation."
-    }
-    else {
-        scoop install gsudo
-        Write-Host "gsudo installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install gsudo. Error: $_"
-}
-try {
-    if (Test-ScoopPackageInstalled -PackageName "ripgrep") {
-        Write-Host "ripgrep is already installed. Skipping installation."
-    }
-    else {
-        scoop install ripgrep
-        Write-Host "ripgrep installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install ripgrep. Error: $_"
-}
-try {
-    if (Test-ScoopPackageInstalled -PackageName "fd") {
-        Write-Host "fd is already installed. Skipping installation."
-    }
-    else {
-        scoop install fd
-        Write-Host "fd installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install fd. Error: $_"
-}
-try {
-    if (Test-ScoopPackageInstalled -PackageName "gitui") {
-        Write-Host "gitui is already installed. Skipping installation."
-    }
-    else {
-        scoop install gitui
-        Write-Host "gitui installed successfully."
-    }
-}
-catch {
-    Write-Error "Failed to install gitui. Error: $_"
-}
-
-# Set execution policy to allow running PowerShell profiles
-try {
-    Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser -Force
-    Write-Host "Execution policy set to Unrestricted for CurrentUser scope."
-    Write-Host "This allows your PowerShell profile to run automatically."
-}
-catch {
-    Write-Warning "Failed to set execution policy. You may need to run 'Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser' manually."
-}
-
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-Write-Host "Setup completed!" -ForegroundColor Green
-Write-Host "========================================" -ForegroundColor Green
-Write-Host "Please restart your PowerShell session to apply all changes." -ForegroundColor Yellow
+Write-Host 'Setup completed. Restart PowerShell to load the profile.'
